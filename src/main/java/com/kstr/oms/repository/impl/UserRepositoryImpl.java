@@ -128,6 +128,7 @@ public class UserRepositoryImpl implements UserRepository {
              UpdateItemRequest updateItemRequest = UpdateItemRequest.builder()
                      .tableName(dynamoDBKeyBuilder.getTableName())
                      .key(key)
+                     .conditionExpression("attribute_exists(pk) AND attribute_exists(sk)")
                      .updateExpression(updateExpression.toString())
                      .expressionAttributeNames(Map.of("#name", "name"))
                      .expressionAttributeValues(expressionAttributeValues)
@@ -140,6 +141,9 @@ public class UserRepositoryImpl implements UserRepository {
 
             return Optional.of(updatedUser);
 
+        } catch (ConditionalCheckFailedException e) {
+            log.warn("User not found — userId: {}", userId);
+            return Optional.empty();
         } catch (Exception e) {
             log.error("Error updating user ::: ", e);
             throw e;

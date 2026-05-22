@@ -90,26 +90,28 @@ public class OrderRepositoryImpl implements OrderRepository {
                     + ", " + DynamoDBKeyBuilder.GSI2SK + " = :gsi2sk"
                     + ", " + OrderColumn.UPDATED_AT + " = :updatedAt");
 
+            String assignNow = " = :currentUTCDateTime";
             switch (newStatus) {
-                case PROCESSING -> updateExpression.append(", ").append(OrderColumn.PROCESSING_AT);
-                case SHIPPED    -> updateExpression.append(", ").append(OrderColumn.SHIPPED_AT);
-                case COMPLETED  -> updateExpression.append(", ").append(OrderColumn.COMPLETED_AT);
-                case DELIVERED  -> updateExpression.append(", ").append(OrderColumn.DELIVERED_AT);
-                case CANCELLED  -> updateExpression.append(", ").append(OrderColumn.CANCELLED_AT);
+                case PROCESSING -> updateExpression.append(", ").append(OrderColumn.PROCESSING_AT).append(assignNow);
+                case SHIPPED    -> updateExpression.append(", ").append(OrderColumn.SHIPPED_AT).append(assignNow);
+                case COMPLETED  -> updateExpression.append(", ").append(OrderColumn.COMPLETED_AT).append(assignNow);
+                case DELIVERED  -> updateExpression.append(", ").append(OrderColumn.DELIVERED_AT).append(assignNow);
+                case CANCELLED  -> updateExpression.append(", ").append(OrderColumn.CANCELLED_AT).append(assignNow);
                 default -> { /* PENDING — no extra date field */ }
             }
-
-            updateExpression.append(" = :currentUTCDateTime");
 
             Map<String, AttributeValue> attrMap = new HashMap<>();
             attrMap.put(":status", buildNumAttribute(String.valueOf(newStatus.getCode())));
             attrMap.put(":gsi2sk", buildStrAttribute(DynamoDBKeyBuilder.buildOrderGSI2SK(String.valueOf(newStatus.getCode()))));
             attrMap.put(":updatedAt", buildStrAttribute(currentUTCDateTime));
-            attrMap.put(":currentUTCDateTime", buildStrAttribute(currentUTCDateTime));
+            if (newStatus != OrderStatus.PENDING) {
+                attrMap.put(":currentUTCDateTime", buildStrAttribute(currentUTCDateTime));
+            }
 
             UpdateItemResponse response = dynamoDbClient.updateItem(UpdateItemRequest.builder()
                     .tableName(dynamoDBKeyBuilder.getTableName())
                     .key(buildKey(userId, orderId))
+                    .conditionExpression("attribute_exists(pk) AND attribute_exists(sk) AND #status < :status")
                     .updateExpression(updateExpression.toString())
                     .expressionAttributeNames(Map.of("#status", OrderColumn.STATUS))
                     .expressionAttributeValues(attrMap)
@@ -118,6 +120,9 @@ public class OrderRepositoryImpl implements OrderRepository {
 
             log.info("Order status updated — orderId: {}, status: {}", orderId, newStatus);
             return Optional.of(fromAttributeMap(response.attributes()));
+        } catch (ConditionalCheckFailedException e) {
+            log.warn("Order not found or Invalid status update — userId: {}, orderId: {}, status: {}", userId, orderId, newStatus);
+            throw e;
         } catch (Exception e) {
             log.error("Error updating order status ::: ", e);
             throw e;
@@ -335,7 +340,7 @@ public class OrderRepositoryImpl implements OrderRepository {
         attrMap.put(OrderColumn.TOTAL_AMOUNT, buildNumAttribute(order.getTotalAmount().toString()));
         attrMap.put(OrderColumn.PAYMENT_METHOD, buildStrAttribute(order.getPaymentMethod()));
 
-        // Store items as a DynamoDB List of Maps
+        // Store items as a List of Maps
         if (!CollectionUtils.isEmpty(order.getItems())) {
             List<AttributeValue> itemAttrs = order.getItems().stream()
                     .map(item -> AttributeValue.builder().m(itemToMap(item)).build())

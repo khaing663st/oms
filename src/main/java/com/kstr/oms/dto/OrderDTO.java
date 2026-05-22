@@ -25,7 +25,7 @@ public class OrderDTO {
     private String updatedAt;
     private String processingAt;
     private String shippedAt;
-    private String completedAt;
     private String deliveredAt;
+    private String completedAt;
     private String cancelledAt;
 }

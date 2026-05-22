@@ -9,6 +9,7 @@ import com.kstr.oms.service.OrderService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import software.amazon.awssdk.services.dynamodb.model.ConditionalCheckFailedException;
 
 import java.util.List;
 import java.util.Optional;
@@ -45,6 +46,8 @@ public class OrderServiceImpl implements OrderService {
         } catch (IllegalArgumentException e) {
             log.error("Invalid order status ::: {}", status);
             throw new IllegalArgumentException("Invalid order status ::: " + status, e);
+        } catch (ConditionalCheckFailedException e) {
+            throw e;
         } catch (Exception e) {
             log.error("Error updating order status ::: ", e);
             throw e;
